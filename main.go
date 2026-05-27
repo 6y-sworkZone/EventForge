@@ -10,9 +10,12 @@ import (
 	"eventforge/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load()
+
 	cfg := config.Load()
 
 	os.MkdirAll(cfg.UploadPath+"/qrcodes", 0755)
@@ -20,6 +23,8 @@ func main() {
 	os.MkdirAll(cfg.UploadPath+"/avatars", 0755)
 
 	models.InitDB(cfg.DBPath)
+
+	middleware.StartReminderScheduler()
 
 	authHandler := handlers.NewAuthHandler()
 	eventHandler := handlers.NewEventHandler()

@@ -244,8 +244,14 @@ func (h *DashboardHandler) GetParticipantProfile(c *gin.Context) {
 		Count    int64  `json:"count"`
 	}
 
+	type RegionDist struct {
+		Region string `json:"region"`
+		Count  int64  `json:"count"`
+	}
+
 	var companies []CompanyDist
 	var positions []PositionDist
+	var regions []RegionDist
 
 	query := models.DB.Model(&models.Registration{}).Where("event_id = ? AND status IN ?", eventID,
 		[]models.RegistrationStatus{models.RegistrationStatusConfirmed, models.RegistrationStatusCheckedIn})
@@ -254,9 +260,12 @@ func (h *DashboardHandler) GetParticipantProfile(c *gin.Context) {
 
 	query.Select("position, count(*) as count").Group("position").Having("position != ''").Order("count DESC").Limit(10).Scan(&positions)
 
+	query.Select("region, count(*) as count").Group("region").Having("region != ''").Order("count DESC").Limit(10).Scan(&regions)
+
 	c.JSON(http.StatusOK, gin.H{
 		"companies": companies,
 		"positions": positions,
+		"regions":   regions,
 	})
 }
 

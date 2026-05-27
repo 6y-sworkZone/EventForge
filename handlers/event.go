@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
 	"eventforge/models"
+	"eventforge/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -191,6 +193,42 @@ func (h *EventHandler) Update(c *gin.Context) {
 
 	if len(updates) > 0 {
 		models.DB.Model(&event).Updates(updates)
+
+		models.DB.First(&event, id)
+
+		timeChanged := req.StartTime != nil || req.EndTime != nil
+		locationChanged := req.Location != "" || (req.VenueID != nil)
+		if timeChanged || locationChanged {
+			var registrations []models.Registration
+			models.DB.Where("event_id = ? AND status IN ?", event.ID,
+				[]models.RegistrationStatus{models.RegistrationStatusConfirmed, models.RegistrationStatusCheckedIn}).
+				Distinct("email").Find(&registrations)
+
+			changeDetails := ""
+			if timeChanged {
+				changeDetails += fmt.Sprintf("活动时间：%s 至 %s\n", event.StartTime.Format("2006-01-02 15:04"), event.EndTime.Format("2006-01-02 15:04"))
+			}
+			if locationChanged {
+				changeDetails += fmt.Sprintf("活动地点：%s\n", event.Location)
+			}
+
+			now := time.Now()
+			subject := fmt.Sprintf("活动信息更新 - %s", event.Title)
+			content := fmt.Sprintf("您好，\n\n您报名的活动「%s」信息有更新：\n\n%s\n\n请查看最新活动信息，如有疑问请联系我们。\n\n此致\nEventForge 团队", event.Title, changeDetails)
+
+			for _, r := range registrations {
+				utils.SendEmail(r.Email, subject, content)
+			}
+
+			models.DB.Create(&models.Notification{
+				EventID: &event.ID,
+				Type:    models.NotificationTypeEventUpdate,
+				Subject: subject,
+				Content: content,
+				Status:  models.NotificationStatusSent,
+				SentAt:  &now,
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"event": event})

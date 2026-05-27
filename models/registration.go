@@ -24,6 +24,7 @@ type Registration struct {
 	Phone           string             `json:"phone"`
 	Company         string             `json:"company"`
 	Position        string             `json:"position"`
+	Region          string             `json:"region"`
 	DietPreference  string             `json:"diet_preference"`
 	CustomFields    string             `json:"custom_fields"`
 	Status          RegistrationStatus `gorm:"default:pending" json:"status"`

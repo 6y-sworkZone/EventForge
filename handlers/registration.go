@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -28,6 +29,7 @@ type EventRegistrationRequest struct {
 	Phone          string `json:"phone"`
 	Company        string `json:"company"`
 	Position       string `json:"position"`
+	Region         string `json:"region"`
 	DietPreference string `json:"diet_preference"`
 	CustomFields   string `json:"custom_fields"`
 	PromoCode      string `json:"promo_code"`
@@ -82,6 +84,7 @@ func (h *RegistrationHandler) Register(c *gin.Context) {
 		Phone:          req.Phone,
 		Company:        req.Company,
 		Position:       req.Position,
+		Region:         req.Region,
 		DietPreference: req.DietPreference,
 		CustomFields:   req.CustomFields,
 		Status:         status,
@@ -160,17 +163,22 @@ func (h *RegistrationHandler) Register(c *gin.Context) {
 	if status == models.RegistrationStatusConfirmed {
 		icsContent := utils.GenerateICS(event.Title, event.StartTime, event.EndTime, event.Location, event.Description)
 		icsPath := fmt.Sprintf("./uploads/ics/%s.ics", regID)
+		os.WriteFile(icsPath, []byte(icsContent), 0644)
+
+		emailContent := fmt.Sprintf("您好 %s，\n\n您已成功报名参加「%s」活动。\n\n活动时间：%s\n活动地点：%s\n\n报名编号：%s\n\n请保存此邮件作为凭证，活动开始前我们将发送提醒通知。\n\n此致\nEventForge 团队",
+			req.Name, event.Title, event.StartTime.Format("2006-01-02 15:04"), event.Location, regID)
+
+		utils.SendEmail(req.Email, fmt.Sprintf("活动报名成功 - %s", event.Title), emailContent, icsPath)
+
+		now := time.Now()
 		models.DB.Create(&models.Notification{
 			EventID: &event.ID,
 			Type:    models.NotificationTypeRegistrationSuccess,
 			Subject: fmt.Sprintf("活动报名成功 - %s", event.Title),
-			Content: fmt.Sprintf("您好 %s，\n\n您已成功报名参加「%s」活动。\n\n活动时间：%s\n活动地点：%s\n\n报名编号：%s\n\n此致\nEventForge 团队",
-				req.Name, event.Title, event.StartTime.Format("2006-01-02 15:04"), event.Location, regID),
-			Status:  models.NotificationStatusPending,
+			Content: emailContent,
+			Status:  models.NotificationStatusSent,
+			SentAt:  &now,
 		})
-
-		_ = icsContent
-		_ = icsPath
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -329,7 +337,7 @@ func (h *RegistrationHandler) ExportCSV(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=registrations_%s.csv", time.Now().Format("20060102")))
 
 	w := csv.NewWriter(c.Writer)
-	w.Write([]string{"ID", "活动ID", "姓名", "邮箱", "手机", "公司", "职位", "饮食偏好", "状态", "签到时间", "报名时间"})
+	w.Write([]string{"ID", "活动ID", "姓名", "邮箱", "手机", "公司", "职位", "地区", "饮食偏好", "状态", "签到时间", "报名时间"})
 
 	for _, reg := range registrations {
 		checkedInAt := ""
@@ -345,6 +353,7 @@ func (h *RegistrationHandler) ExportCSV(c *gin.Context) {
 			reg.Phone,
 			reg.Company,
 			reg.Position,
+			reg.Region,
 			reg.DietPreference,
 			string(reg.Status),
 			checkedInAt,
