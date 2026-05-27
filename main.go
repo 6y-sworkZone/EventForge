@@ -90,6 +90,8 @@ func main() {
 			events.POST("/:id/custom-fields", eventHandler.AddCustomField)
 			events.DELETE("/:id/custom-fields/:field_id", eventHandler.DeleteCustomField)
 
+			events.POST("/:id/cover", eventHandler.UploadCover)
+
 			events.GET("/:id/tickets", ticketHandler.ListTickets)
 			events.POST("/:id/tickets", ticketHandler.CreateTicket)
 			events.GET("/:id/tickets/stats", ticketHandler.GetTicketStats)

@@ -134,6 +134,38 @@ func (h *ScheduleHandler) CreateAgendaItem(c *gin.Context) {
 		return
 	}
 
+	var schedule models.Schedule
+	if err := models.DB.First(&schedule, parseUint(scheduleID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Schedule not found"})
+		return
+	}
+
+	if req.VenueRoomID != nil && !req.StartTime.IsZero() && !req.EndTime.IsZero() {
+		var conflicts []models.AgendaItem
+		models.DB.Joins("JOIN schedules ON schedules.id = agenda_items.schedule_id").
+			Where("schedules.event_id = ? AND agenda_items.venue_room_id = ? AND agenda_items.id != ? AND agenda_items.start_time < ? AND agenda_items.end_time > ?",
+				schedule.EventID, *req.VenueRoomID, 0, req.EndTime, req.StartTime).
+			Find(&conflicts)
+
+		if len(conflicts) > 0 {
+			conflictInfo := make([]map[string]interface{}, 0)
+			for _, c := range conflicts {
+				conflictInfo = append(conflictInfo, map[string]interface{}{
+					"id":         c.ID,
+					"title":      c.Title,
+					"start_time": c.StartTime,
+					"end_time":   c.EndTime,
+				})
+			}
+			c.JSON(http.StatusConflict, gin.H{
+				"error":      "Venue room conflict detected",
+				"conflicts":  conflictInfo,
+				"message":    "The selected venue room is already booked during this time period",
+			})
+			return
+		}
+	}
+
 	item := models.AgendaItem{
 		ScheduleID:  parseUint(scheduleID),
 		Title:       req.Title,
@@ -177,6 +209,49 @@ func (h *ScheduleHandler) UpdateAgendaItem(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	venueRoomID := item.VenueRoomID
+	startTime := item.StartTime
+	endTime := item.EndTime
+
+	if req.VenueRoomID != nil {
+		venueRoomID = req.VenueRoomID
+	}
+	if !req.StartTime.IsZero() {
+		startTime = req.StartTime
+	}
+	if !req.EndTime.IsZero() {
+		endTime = req.EndTime
+	}
+
+	if venueRoomID != nil {
+		var schedule models.Schedule
+		models.DB.First(&schedule, item.ScheduleID)
+
+		var conflicts []models.AgendaItem
+		models.DB.Joins("JOIN schedules ON schedules.id = agenda_items.schedule_id").
+			Where("schedules.event_id = ? AND agenda_items.venue_room_id = ? AND agenda_items.id != ? AND agenda_items.start_time < ? AND agenda_items.end_time > ?",
+				schedule.EventID, *venueRoomID, item.ID, endTime, startTime).
+			Find(&conflicts)
+
+		if len(conflicts) > 0 {
+			conflictInfo := make([]map[string]interface{}, 0)
+			for _, c := range conflicts {
+				conflictInfo = append(conflictInfo, map[string]interface{}{
+					"id":         c.ID,
+					"title":      c.Title,
+					"start_time": c.StartTime,
+					"end_time":   c.EndTime,
+				})
+			}
+			c.JSON(http.StatusConflict, gin.H{
+				"error":     "Venue room conflict detected",
+				"conflicts": conflictInfo,
+				"message":   "The selected venue room is already booked during this time period",
+			})
+			return
+		}
 	}
 
 	updates := map[string]interface{}{}

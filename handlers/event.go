@@ -31,6 +31,11 @@ func (h *EventHandler) List(c *gin.Context) {
 		query = query.Where("type = ?", eventType)
 	}
 
+	keyword := c.Query("keyword")
+	if keyword != "" {
+		query = query.Where("title LIKE ?", "%"+keyword+"%")
+	}
+
 	if err := query.Order("created_at DESC").Find(&events).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events"})
 		return
@@ -46,6 +51,11 @@ func (h *EventHandler) ListPublic(c *gin.Context) {
 	eventType := c.Query("type")
 	if eventType != "" {
 		query = query.Where("type = ?", eventType)
+	}
+
+	keyword := c.Query("keyword")
+	if keyword != "" {
+		query = query.Where("title LIKE ?", "%"+keyword+"%")
 	}
 
 	if err := query.Order("start_time ASC").Find(&events).Error; err != nil {
@@ -456,4 +466,45 @@ func parseUint(s string) uint {
 		}
 	}
 	return n
+}
+
+func (h *EventHandler) UploadCover(c *gin.Context) {
+	id := c.Param("id")
+
+	var event models.Event
+	if err := models.DB.First(&event, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("cover")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+	defer file.Close()
+
+	if !utils.IsImageFile(header.Filename) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image file type"})
+		return
+	}
+
+	maxSize := int64(5 * 1024 * 1024)
+	if header.Size > maxSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File too large (max 5MB)"})
+		return
+	}
+
+	coverPath, err := utils.UploadCoverImage(file, header.Filename)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
+		return
+	}
+
+	models.DB.Model(&event).Update("cover_image", coverPath)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Cover uploaded successfully",
+		"cover_path": coverPath,
+	})
 }

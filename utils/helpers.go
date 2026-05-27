@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"eventforge/config"
 
+	"github.com/google/uuid"
 	"github.com/jung-kurt/gofpdf"
 	"github.com/skip2/go-qrcode"
 	"gopkg.in/gomail.v2"
@@ -33,6 +37,40 @@ func SaveQRCode(content, filename string) (string, error) {
 		return "", err
 	}
 	return "/uploads/qrcodes/" + filename, nil
+}
+
+func UploadCoverImage(file io.Reader, filename string) (string, error) {
+	cfg := config.Load()
+	dir := cfg.UploadPath + "/covers"
+	os.MkdirAll(dir, 0755)
+
+	ext := filepath.Ext(filename)
+	newFilename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+	filepath := dir + "/" + newFilename
+
+	dst, err := os.Create(filepath)
+	if err != nil {
+		return "", err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		return "", err
+	}
+
+	return "/uploads/covers/" + newFilename, nil
+}
+
+func IsImageFile(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	validExts := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".webp": true,
+	}
+	return validExts[ext]
 }
 
 func GenerateICS(eventTitle string, startTime, endTime time.Time, location, description string) string {
